@@ -2411,13 +2411,14 @@ def _build_customer_instruction(quality_main, shade, sku, default_scheme="VVS-VS
     q_text = _stone_quality(quality_main, shade, default_scheme)
     return f"IGI ({q_text}) CO BRAND, PRINT MGD DESIGN CODES ({sku}) ON IGI CARD"
 
+
 def _build_special_remarks(quality_main, article_desc):
     """
     Rule:
       - If Article description contains 'MANGALSUTRA'
           -> MAINTAIN GOLD & DIA WT, FISH LOCK WITH MANGALSUTRA CHAIN NEED SMALL "O"KADI
       - Elif Article description contains 'EAR'
-          -> MAINTAIN GOLD & DIA WT POST IN CENTER.
+          -> MAINTAIN GOLD & DIA WT, POST IN CENTER.
       - Else
           -> MAINTAIN GOLD & DIA WT.
     """
@@ -2428,6 +2429,7 @@ def _build_special_remarks(quality_main, article_desc):
     if "EAR" in cat:
         return "MAINTAIN GOLD & DIA WT, POST IN CENTER."
     return "MAINTAIN GOLD & DIA WT."
+
 
 
 # 🔁 DUPLICATION FUNCTION FOR BANGLES
@@ -2515,7 +2517,10 @@ def transform_file(file_like: io.BytesIO) -> bytes:
     mapped_style = mgd_sku.map(lambda k: SKU_TO_STYLE.get(str(k)))
     style = mapped_style.fillna(style_raw).astype(str).str.strip()
 
-    region_display = order_group_orig.fillna("").astype(str).str.strip()
+    # ✅ canonical region names for display (fixes 'uae' -> 'UAE', 'america' -> 'USA', etc.)
+    region_display = order_group_orig.apply(canon_region)
+
+    # stamping still based on canonical region
     stamp = [stamping_for_region(r) for r in region_display]
 
     # build ItemPoNo with ORDER SL NUMBER prefix
@@ -2546,6 +2551,7 @@ def transform_file(file_like: io.BytesIO) -> bytes:
         ],
         "DesignProductionInstruction": "",
         "StampInstruction": stamp,
+        # ✅ now uses canonical region (no lower-case 'uae')
         "OrderGroup": region_display.replace("NAN", ""),
         "Certificate": "",
         "SKUNo": mgd_sku,
