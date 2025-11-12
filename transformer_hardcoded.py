@@ -2426,7 +2426,7 @@ def _build_special_remarks(quality_main, article_desc):
     if "MANGALSUTRA" in cat:
         return 'MAINTAIN GOLD & DIA WT, FISH LOCK WITH MANGALSUTRA CHAIN NEED SMALL "O"KADI'
     if "EAR" in cat:
-        return "MAINTAIN GOLD & DIA, WT POST IN CENTER."
+        return "MAINTAIN GOLD & DIA WT, POST IN CENTER."
     return "MAINTAIN GOLD & DIA WT."
 
 
