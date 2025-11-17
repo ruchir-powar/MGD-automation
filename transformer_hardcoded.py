@@ -2316,23 +2316,20 @@ SKU_TO_STYLE = {
     "MGNFLC177ER2": "XNE0336",
     "MGNPNG291RN1": "RNG11610",
 }
-
 import io
 import re
 import pandas as pd
 import numpy as np
 
 # ========================
-# REGION, STAMPING, STYLE maps (keep these above)
+# REGION aliases (normalize incoming values)
 # ========================
-
-# Canonical aliasing for messy inputs -> preferred region labels used downstream.
 REGION_ALIAS = {
     "KSA": "Saudi",
     "SAUDI": "Saudi",
     "AMERICA": "USA",
     "UNITED STATES": "USA",
-    "UNITED KINGDOM": "United Kingdom",
+    "UNITED KINGDOM": "United Kingdom",  # will later map to "UK" in stamping
     "U.K.": "United Kingdom",
     "UAE": "UAE",
     "U.A.E.": "UAE",
@@ -2345,18 +2342,20 @@ REGION_ALIAS = {
     "SINGAPORE": "Singapore",
 }
 
-# ---- Stamping rules (FINAL, hard-coded) ------------------------------------
+# ========================
+# STAMPING (hard-coded; final)
+# ========================
 _DEFAULT_MLOGO = "750 D 0.00 ct M-LOGO"
 
 REGION_STAMPING = {
     "Kuwait":     "750 D 0.00 ct",
-    "Oman":       "750 D 0.00 ct INDIA  M-LOGO",  # NOTE: double space before M-LOGO
+    "Oman":       "750 D 0.00 ct INDIA  M-LOGO",  # note the double space before M-LOGO
     "UAE":        _DEFAULT_MLOGO,
     "Bahrain":    _DEFAULT_MLOGO,
     "Qatar":      _DEFAULT_MLOGO,
     "Singapore":  _DEFAULT_MLOGO,
     "USA":        _DEFAULT_MLOGO,
-    "UK":         _DEFAULT_MLOGO,                  # used for 'United Kingdom' via special case
+    "UK":         _DEFAULT_MLOGO,                 # 'United Kingdom' routes to this
     "Canada":     _DEFAULT_MLOGO,
     "Australia":  _DEFAULT_MLOGO,
     "Newzealand": _DEFAULT_MLOGO,
@@ -2364,29 +2363,35 @@ REGION_STAMPING = {
     "Saudi":      "750 D 0.00 ct OLD-LOGO",
 }
 
-# Provide your real maps here (kept empty so code is runnable out-of-the-box)
-BRANCH_TO_REGION = {}
-SKU_TO_STYLE = {}
+# case-insensitive map for stamping
+_REGION_STAMPING_CI = {k.strip().upper(): v for k, v in REGION_STAMPING.items()}
 
-# ----------------------------------------------------------------------------
+# ========================
+# Optional maps you may already have (kept empty here)
+# ========================
+BRANCH_TO_REGION = {}   # e.g., {"WMALC": "Kuwait"} if you ever need it
+SKU_TO_STYLE = {}       # e.g., {"MRGGEN129PN6": "J-EP..."} if you maintain overrides
 
+
+# ========================
+# Helpers
+# ========================
 def canon_region(name: str) -> str:
     if name is None or (isinstance(name, float) and np.isnan(name)):
         return ""
     s = str(name).strip().upper()
     s = " ".join(s.split())
-    return REGION_ALIAS.get(s, s)
+    return REGION_ALIAS.get(s, s)  # returns a nicely cased alias or the UPPER string
+
 
 def stamping_for_region(region_name: str) -> str:
-    r = canon_region(region_name)
-    # direct hit first
-    if r in REGION_STAMPING:
-        return REGION_STAMPING[r]
-    # map 'United Kingdom' -> 'UK' rule
-    if r == "United Kingdom" or r == "UNITED KINGDOM":
-        return REGION_STAMPING.get("UK", _DEFAULT_MLOGO)
-    # fallback to default M-LOGO
-    return _DEFAULT_MLOGO
+    """Return stamping for region, robust to case/spacing/aliasing."""
+    r = canon_region(region_name) or ""
+    key = r.strip().upper()
+    if key == "UNITED KINGDOM":
+        key = "UK"
+    return _REGION_STAMPING_CI.get(key, _DEFAULT_MLOGO)
+
 
 def _parse_item_size(val):
     if pd.isna(val):
@@ -2394,6 +2399,7 @@ def _parse_item_size(val):
     s = str(val)
     m = re.search(r"(\d+(?:\.\d+)?)", s)
     return float(m.group(1)) if m else np.nan
+
 
 def _map_metal(val):
     if isinstance(val, str):
@@ -2404,12 +2410,14 @@ def _map_metal(val):
             return "GA14"
     return val
 
+
 def _map_tone(val):
     if not isinstance(val, str):
         return val
     v = str(val).strip().upper()
     m = {"YG": "Y", "RG": "P", "WG": "W", "TWO TONE": "T", "TRI TONE": "TT"}
     return m.get(v, v[:1] if v else v)
+
 
 def _stone_quality(quality_main, shade, default="VVS-VS-GH"):
     parts = []
@@ -2423,9 +2431,11 @@ def _stone_quality(quality_main, shade, default="VVS-VS-GH"):
             parts.append(sh)
     return "-".join(parts) if parts else default
 
+
 def _build_customer_instruction(quality_main, shade, sku, default_scheme="VVS-VS-GH"):
     q_text = _stone_quality(quality_main, shade, default_scheme)
     return f"IGI ({q_text}) CO BRAND, PRINT MGD DESIGN CODES ({sku}) ON IGI CARD"
+
 
 def _build_special_remarks(quality_main, article_desc):
     """
@@ -2445,7 +2455,7 @@ def _build_special_remarks(quality_main, article_desc):
         return "MAINTAIN GOLD & DIA WT, POST IN CENTER."
     return "MAINTAIN GOLD & DIA WT."
 
-# 🔁 DUPLICATION FUNCTION FOR BANGLES
+
 def _expand_bangle_rows(df):
     """
     Duplicate rows if SKU/Style has 'BG' and PCS/OrderQty > 1.
@@ -2461,6 +2471,7 @@ def _expand_bangle_rows(df):
         else:
             expanded.append(row.copy())
     return pd.DataFrame(expanded)
+
 
 def _format_item_po(item_po_val, order_sl_val):
     """
@@ -2482,6 +2493,7 @@ def _format_item_po(item_po_val, order_sl_val):
 
     return f"{prefix}-{base}" if prefix else base
 
+
 def _style_suffix(s: str) -> str:
     """
     Extract trailing digits from StyleCode for set grouping.
@@ -2490,6 +2502,7 @@ def _style_suffix(s: str) -> str:
     """
     m = re.search(r"(\d+)$", str(s))
     return m.group(1) if m else ""
+
 
 # ================================================
 #                MAIN TRANSFORM FUNCTION
@@ -2527,10 +2540,10 @@ def transform_file(file_like: io.BytesIO) -> bytes:
     mapped_style = mgd_sku.map(lambda k: SKU_TO_STYLE.get(str(k)))
     style = mapped_style.fillna(style_raw).astype(str).str.strip()
 
-    # ✅ canonical region names for display (fixes 'uae' -> 'UAE', 'america' -> 'USA', etc.)
+    # canonical region names for display (uae -> UAE, america -> USA, etc.)
     region_display = order_group_orig.apply(canon_region)
 
-    # stamping based on canonical region mapping above
+    # stamping based on canonical region (robust to case/spacing)
     stamp = [stamping_for_region(r) for r in region_display]
 
     # build ItemPoNo with ORDER SL NUMBER prefix
@@ -2561,7 +2574,6 @@ def transform_file(file_like: io.BytesIO) -> bytes:
         ],
         "DesignProductionInstruction": "",
         "StampInstruction": stamp,
-        # ✅ now uses canonical region (no lower-case 'uae')
         "OrderGroup": region_display.replace("NAN", ""),
         "Certificate": "",
         "SKUNo": mgd_sku,
@@ -2575,16 +2587,14 @@ def transform_file(file_like: io.BytesIO) -> bytes:
         "StoneQuality": np.nan,
     })
 
-    # ----- NEW: set grouping based on StyleCode numeric suffix within SAME ItemRefNo -----
+    # ----- Set grouping based on StyleCode numeric suffix within SAME ItemRefNo -----
     df_out["__style_suffix__"] = df_out["StyleCode"].map(_style_suffix)
     df_out["__set_size__"] = 1  # default
 
-    # group by (ItemRefNo, suffix) and count how many pieces share that suffix
     for (branch, suffix), idxs in df_out.groupby(["ItemRefNo", "__style_suffix__"]).groups.items():
         idxs = list(idxs)
         if suffix == "" or len(idxs) < 2:
             continue
-        # optional: require same length StyleCode
         lengths = df_out.loc[idxs, "StyleCode"].astype(str).str.len()
         if lengths.nunique() != 1:
             continue
@@ -2600,7 +2610,7 @@ def transform_file(file_like: io.BytesIO) -> bytes:
     )
 
     # ------------------------------------------------------------------------
-    q_main_u = q_main.astype(str).str.upper().str.strip()
+    q_main_u = pd.Series(q_main).astype(str).str.upper().str.strip()
     df_out["__sheet__"] = np.where(q_main_u.str.startswith("SI"), "MGD-SIGH", "MGD-VVS VS GH")
 
     # keep article description for ordering (earring last in set)
@@ -2623,10 +2633,7 @@ def transform_file(file_like: io.BytesIO) -> bytes:
             if sub.empty:
                 continue
 
-            # sort inside sheet:
-            # 1) by ItemRefNo
-            # 2) by StyleCode numeric suffix (so set pieces together)
-            # 3) within suffix: non-earring first, earrings last
+            # sort inside sheet
             sub["__suffix__"] = sub["StyleCode"].map(_style_suffix)
             sub["__is_ear__"] = sub["__article__"].str.upper().str.contains("EAR")
 
