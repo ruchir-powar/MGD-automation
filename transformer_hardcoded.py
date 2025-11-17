@@ -2318,54 +2318,88 @@ SKU_TO_STYLE = {
 }
 
 
-
 import io
 import re
 import pandas as pd
 import numpy as np
 
 # ========================
-# REGION, STAMPING, STYLE maps (keep these above)
+# STRICT REGION & STAMPING
 # ========================
+
+# Canonical keys are UPPERCASE and match REGION_STAMPING keys exactly.
 REGION_ALIAS = {
-    "KSA": "Saudi",
-    "SAUDI": "Saudi",
+    # Exact canonical names themselves
+    "KUWAIT": "KUWAIT",
+    "OMAN": "OMAN",
+    "UAE": "UAE",
+    "BAHRAIN": "BAHRAIN",
+    "QATAR": "QATAR",
+    "SINGAPORE": "SINGAPORE",
+    "USA": "USA",
+    "UK": "UK",
+    "CANADA": "CANADA",
+    "AUSTRALIA": "AUSTRALIA",
+    "NEWZEALAND": "NEWZEALAND",
+    "MALAYSIA": "MALAYSIA",
+    "SAUDI": "SAUDI",
+
+    # Common variants → canonical
+    "U.A.E.": "UAE",
+    "UNITED ARAB EMIRATES": "UAE",
+
+    "KSA": "SAUDI",
+    "SAUDI ARABIA": "SAUDI",
+
     "AMERICA": "USA",
     "UNITED STATES": "USA",
-    "UNITED KINGDOM": "United Kingdom",
-    "U.K.": "United Kingdom",
-    "UAE": "UAE",
-    "U.A.E.": "UAE",
-    "MALAYSIA": "Malaysia",
-    "NEWZEALAND": "Newzealand",
-    "BAHRAIN": "Bahrain",
-    "KUWAIT": "Kuwait",
-    "QATAR": "Qatar",
-    "CANADA": "Canada",
-    "SINGAPORE": "Singapore",
+    "UNITED STATES OF AMERICA": "USA",
+    "U.S.A.": "USA",
+    "U.S.": "USA",
+
+    "UNITED KINGDOM": "UK",
+    "U.K.": "UK",
+
+    "NEW ZEALAND": "NEWZEALAND",
 }
 
-# ==== keep your existing REGION_STAMPING, BRANCH_TO_REGION, SKU_TO_STYLE
-# REGION_STAMPING = {...}
-# BRANCH_TO_REGION = {...}
-# SKU_TO_STYLE = {...}
+# ⚠️ Exactly the strings you provided (note the double space before M-LOGO for OMAN)
+REGION_STAMPING = {
+    "KUWAIT":      "750 D 0.00 ct",
+    "OMAN":        "750 D 0.00 ct INDIA  M-LOGO",
+    "UAE":         "750 D 0.00 ct M-LOGO",
+    "BAHRAIN":     "750 D 0.00 ct M-LOGO",
+    "QATAR":       "750 D 0.00 ct M-LOGO",
+    "SINGAPORE":   "750 D 0.00 ct M-LOGO",
+    "USA":         "750 D 0.00 ct M-LOGO",
+    "UK":          "750 D 0.00 ct M-LOGO",
+    "CANADA":      "750 D 0.00 ct M-LOGO",
+    "AUSTRALIA":   "750 D 0.00 ct M-LOGO",
+    "NEWZEALAND":  "750 D 0.00 ct M-LOGO",
+    "MALAYSIA":    "750 D 0.00 ct M-LOGO",
+    "SAUDI":       "750 D 0.00 ct OLD-LOGO",
+}
 
+# If you have a real mapping, plug it here; leaving empty keeps supplier style fallback working.
+SKU_TO_STYLE = {}
+
+
+# ========================
+# Helpers
+# ========================
 
 def canon_region(name: str) -> str:
+    """Normalize any region text to our strict canonical key (UPPERCASE)."""
     if name is None or (isinstance(name, float) and np.isnan(name)):
         return ""
-    s = str(name).strip().upper()
-    s = " ".join(s.split())
-    return REGION_ALIAS.get(s, s)
+    s = " ".join(str(name).strip().upper().split())
+    return REGION_ALIAS.get(s, s)  # fallback to uppercased token if unseen
 
 
 def stamping_for_region(region_name: str) -> str:
-    r = canon_region(region_name)
-    if r in REGION_STAMPING:
-        return REGION_STAMPING[r]
-    if r == "UNITED KINGDOM":
-        return REGION_STAMPING.get("UK", "750 D 0.00 ct M-LOGO")
-    return "750 D 0.00 ct M-LOGO"
+    """Return stamping strictly per the REGION_STAMPING table."""
+    key = canon_region(region_name)
+    return REGION_STAMPING.get(key, "750 D 0.00 ct M-LOGO")  # safe default
 
 
 def _parse_item_size(val):
@@ -2412,7 +2446,7 @@ def _build_customer_instruction(quality_main, shade, sku, default_scheme="VVS-VS
     return f"IGI ({q_text}) CO BRAND, PRINT MGD DESIGN CODES ({sku}) ON IGI CARD"
 
 
-def _build_special_remarks(quality_main, article_desc):
+def _build_special_remarks(_, article_desc):
     """
     Rule:
       - If Article description contains 'MANGALSUTRA'
@@ -2431,11 +2465,9 @@ def _build_special_remarks(quality_main, article_desc):
     return "MAINTAIN GOLD & DIA WT."
 
 
-
-# 🔁 DUPLICATION FUNCTION FOR BANGLES
 def _expand_bangle_rows(df):
     """
-    Duplicate rows if SKU/Style has 'BG' and PCS/OrderQty > 1.
+    Duplicate rows if SKU/Style has 'BG' and OrderQty > 1 (one row per piece).
     """
     expanded = []
     for _, row in df.iterrows():
@@ -2517,10 +2549,10 @@ def transform_file(file_like: io.BytesIO) -> bytes:
     mapped_style = mgd_sku.map(lambda k: SKU_TO_STYLE.get(str(k)))
     style = mapped_style.fillna(style_raw).astype(str).str.strip()
 
-    # ✅ canonical region names for display (fixes 'uae' -> 'UAE', 'america' -> 'USA', etc.)
+    # Canonical region names for display / stamping (strict)
     region_display = order_group_orig.apply(canon_region)
 
-    # stamping still based on canonical region
+    # stamping strictly from the table
     stamp = [stamping_for_region(r) for r in region_display]
 
     # build ItemPoNo with ORDER SL NUMBER prefix
@@ -2551,7 +2583,6 @@ def transform_file(file_like: io.BytesIO) -> bytes:
         ],
         "DesignProductionInstruction": "",
         "StampInstruction": stamp,
-        # ✅ now uses canonical region (no lower-case 'uae')
         "OrderGroup": region_display.replace("NAN", ""),
         "Certificate": "",
         "SKUNo": mgd_sku,
@@ -2565,7 +2596,7 @@ def transform_file(file_like: io.BytesIO) -> bytes:
         "StoneQuality": np.nan,
     })
 
-    # ----- NEW: set grouping based on StyleCode numeric suffix within SAME ItemRefNo -----
+    # ----- Set grouping based on StyleCode numeric suffix within SAME ItemRefNo -----
     df_out["__style_suffix__"] = df_out["StyleCode"].map(_style_suffix)
     df_out["__set_size__"] = 1  # default
 
