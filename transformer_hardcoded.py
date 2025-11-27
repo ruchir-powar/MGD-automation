@@ -1,4 +1,5 @@
 
+
 import io
 import re
 import pandas as pd
@@ -2463,6 +2464,8 @@ def _build_special_remarks(quality_main, article_desc):
     Rule:
       - If Article description contains 'MANGALSUTRA'
           -> MAINTAIN GOLD & DIA WT, FISH LOCK WITH MANGALSUTRA CHAIN NEED SMALL "O"KADI
+      - Elif Article description contains 'NECKLACE'
+          -> MAINTAIN GOLD & DIA WT, WITH CHAIN
       - Elif Article description contains 'EAR'
           -> MAINTAIN GOLD & DIA WT, POST IN CENTER.
       - Else
@@ -2472,9 +2475,13 @@ def _build_special_remarks(quality_main, article_desc):
 
     if "MANGALSUTRA" in cat:
         return 'MAINTAIN GOLD & DIA WT, FISH LOCK WITH MANGALSUTRA CHAIN NEED SMALL "O"KADI'
-    if "EAR" in cat:
+    elif "NECKLACE" in cat:
+        return "MAINTAIN GOLD & DIA WT, WITH CHAIN"
+    elif "EAR" in cat:
         return "MAINTAIN GOLD & DIA WT, POST IN CENTER."
-    return "MAINTAIN GOLD & DIA WT."
+    else:
+        return "MAINTAIN GOLD & DIA WT."
+
 
 
 def _expand_bangle_rows(df):
